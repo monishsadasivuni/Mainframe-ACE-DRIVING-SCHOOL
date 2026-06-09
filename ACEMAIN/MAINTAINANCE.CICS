@@ -1,0 +1,279 @@
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. STFMNT.
+       ENVIRONMENT DIVISION.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01 WS-COMMAREA.
+          05 WS-LAST-MAP    PIC X(08) VALUE SPACES.
+          05 WS-MODE        PIC X(01) VALUE SPACES.
+             88 ADD-MODE    VALUE 'A'.
+             88 MOD-MODE    VALUE 'M'.
+          05 WS-STU-NUM-CA  PIC X(05) VALUE SPACES.
+       01 STUDENT-REC.
+          05 STU-NUM        PIC X(5).
+          05 STU-NAME       PIC X(20).
+          05 STU-ADDRESS    PIC X(20).
+          05 STU-START-DATE PIC X(10).
+          05 STU-INST-NUM   PIC X(5).
+          05 STU-STATUS     PIC X(1).
+          05 STU-PF-DATE    PIC X(10).
+       01 WS-FLAGS.
+          05 WS-ERROR-FLAG  PIC X(01) VALUE 'N'.
+             88 ERROR-FOUND VALUE 'Y'.
+             88 NO-ERROR    VALUE 'N'.
+          05 WS-RESP        PIC S9(8) COMP.
+          05 WS-RESP2       PIC S9(8) COMP.
+       01 WS-DATE.
+          05 WS-ABSTIME     PIC S9(15) COMP-3.
+          05 WS-FORMDATE    PIC X(10).
+       01 WS-MSG            PIC X(79) VALUE SPACES.
+       01 WS-STU-NUM-NUM    PIC X(05) VALUE SPACES.
+       COPY DFHBMSCA.
+       COPY DFHAID.
+       COPY ACEPMAP.
+       LINKAGE SECTION.
+       01 DFHCOMMAREA       PIC X(14).
+       PROCEDURE DIVISION.
+       MAIN-PARA.
+           EXEC CICS HANDLE CONDITION
+               MAPFAIL(9000-MAPFAIL)
+               NOTFND(8000-NOTFND)
+               ERROR(9999-ERROR)
+           END-EXEC.
+           MOVE LOW-VALUES TO ACEKMAPO
+           MOVE LOW-VALUES TO ACEDMAPO
+           EXEC CICS ASKTIME
+               ABSTIME(WS-ABSTIME)
+           END-EXEC
+           EXEC CICS FORMATTIME
+               ABSTIME(WS-ABSTIME)
+               DDMMYYYY(WS-FORMDATE)
+               DATESEP('-')
+           END-EXEC
+           IF EIBCALEN = 0
+              MOVE 'KMAP' TO WS-LAST-MAP
+              PERFORM 1000-SEND-KEY-MAP
+              EXEC CICS RETURN
+                  TRANSID('KG22')
+                  COMMAREA(WS-COMMAREA)
+                  LENGTH(14)
+              END-EXEC
+           END-IF
+           MOVE DFHCOMMAREA TO WS-COMMAREA
+           MOVE WS-STU-NUM-CA TO WS-STU-NUM-NUM
+           EVALUATE WS-LAST-MAP
+                WHEN 'KMAP'
+                    PERFORM 2000-PROCESS-KEY-MAP
+                WHEN 'DMAP'
+                    PERFORM 3000-PROCESS-DET-MAP
+                WHEN OTHER
+                    PERFORM 1000-SEND-KEY-MAP
+           END-EVALUATE
+           EXEC CICS RETURN
+                TRANSID('KG22')
+                COMMAREA(WS-COMMAREA)
+                LENGTH(14)
+           END-EXEC.
+       1000-SEND-KEY-MAP.
+            MOVE WS-FORMDATE       TO KDATEOO OF ACEKMAPO
+            MOVE WS-MSG            TO KMSGO  OF ACEKMAPO
+            EXEC CICS SEND
+                MAP('ACEKMAP')
+                MAPSET('ACEPMAP')
+                FROM(ACEKMAPO)
+                ERASE
+                CURSOR
+            END-EXEC
+            MOVE SPACES   TO WS-MSG
+            MOVE 'KMAP'   TO WS-LAST-MAP.
+       2000-PROCESS-KEY-MAP.
+            EXEC CICS RECEIVE
+                MAP('ACEKMAP')
+                MAPSET('ACEPMAP')
+                INTO(ACEKMAPI)
+            END-EXEC
+            IF EIBAID = DFHPF3
+               EXEC CICS XCTL PROGRAM('ACEMENU') END-EXEC
+            END-IF
+            IF EIBAID NOT = DFHENTER
+               MOVE 'ONLY ENTER OR PF3 IS ALLOWED' TO WS-MSG
+               PERFORM 1000-SEND-KEY-MAP
+               EXIT
+            END-IF
+            IF KSTUNUMI OF ACEKMAPI = SPACES OR ZEROS
+              MOVE 'STUDENT NUMBER CANNOT BE BLANK' TO WS-MSG
+              PERFORM 1000-SEND-KEY-MAP
+              EXIT
+            END-IF
+            MOVE KSTUNUMI OF ACEKMAPI
+               TO WS-STU-NUM-NUM
+            MOVE WS-STU-NUM-NUM TO WS-STU-NUM-CA
+            EXEC CICS READ
+               FILE('STUFILE')
+               INTO(STUDENT-REC)
+               RIDFLD(WS-STU-NUM-NUM)
+               RESP(WS-RESP)
+            END-EXEC
+            IF WS-RESP = DFHRESP(NORMAL)
+              MOVE 'M' TO WS-MODE
+              PERFORM 4000-SEND-DET-MOD-MAP
+            ELSE
+              MOVE 'A' TO WS-MODE
+              PERFORM 5000-SEND-DET-ADD-MAP
+            END-IF.
+       3000-PROCESS-DET-MAP.
+            EXEC CICS RECEIVE
+               MAP('ACEDMAP')
+               MAPSET('ACEPMAP')
+               INTO(ACEDMAPI)
+            END-EXEC
+            IF EIBAID = DFHPF3
+               PERFORM 1000-SEND-KEY-MAP
+               EXIT
+            END-IF
+            IF ADD-MODE
+              PERFORM 3100-PROCESS-ADD
+            ELSE
+              PERFORM 3200-PROCESS-MOD-DEL
+            END-IF.
+       3100-PROCESS-ADD.
+            IF EIBAID NOT = DFHPF2
+              MOVE 'ONLY PF2(ADD) OR PF3(BACK) ALLOWED' TO WS-MSG
+              PERFORM 5000-SEND-DET-ADD-MAP
+              EXIT
+            END-IF
+           PERFORM 6000-VALIDATE-DET-MAP
+            IF ERROR-FOUND
+               PERFORM 5000-SEND-DET-ADD-MAP
+               EXIT
+            END-IF
+            MOVE DNAMEI OF ACEDMAPI TO STU-NAME
+            MOVE DADDRI OF ACEDMAPI TO STU-ADDRESS
+            MOVE DSDATEI OF ACEDMAPI TO STU-START-DATE
+            MOVE DINSTNUMI OF ACEDMAPI TO STU-INST-NUM
+            MOVE DSTATUSI OF ACEDMAPI TO STU-STATUS
+            MOVE DSTDATE2I OF ACEDMAPI TO STU-PF-DATE
+            MOVE WS-STU-NUM-NUM TO STU-NUM
+            EXEC CICS WRITE
+                FILE('STUFILE')
+                FROM(STUDENT-REC)
+                RIDFLD(STU-NUM)
+                RESP(WS-RESP)
+            END-EXEC
+            IF WS-RESP = DFHRESP(NORMAL)
+              MOVE 'RECORD ADDED' TO WS-MSG
+            ELSE
+              MOVE 'ERROR WRITING RECORD' TO WS-MSG
+            END-IF
+            PERFORM 1000-SEND-KEY-MAP.
+       3200-PROCESS-MOD-DEL.
+            IF EIBAID = DFHPF4
+              EXEC CICS DELETE
+                  FILE('STUFILE')
+                  RIDFLD(WS-STU-NUM-NUM)
+                  RESP(WS-RESP)
+               END-EXEC
+               MOVE 'RECORD DELETED' TO WS-MSG
+               PERFORM 1000-SEND-KEY-MAP
+               EXIT
+            END-IF
+            PERFORM 6000-VALIDATE-DET-MAP
+            IF ERROR-FOUND
+               PERFORM 4000-SEND-DET-MOD-MAP
+               EXIT
+            END-IF
+            EXEC CICS READ
+                FILE('STUFILE')
+                INTO(STUDENT-REC)
+                RIDFLD(WS-STU-NUM-NUM)
+                UPDATE
+                RESP(WS-RESP)
+            END-EXEC
+            IF WS-RESP NOT = DFHRESP(NORMAL)
+                MOVE 'ERROR READING FOR UPDATE' TO WS-MSG
+                PERFORM 4000-SEND-DET-MOD-MAP
+                EXIT
+            END-IF
+            MOVE DNAMEI OF ACEDMAPI TO STU-NAME
+            MOVE DADDRI OF ACEDMAPI TO STU-ADDRESS
+            MOVE DSDATEI OF ACEDMAPI TO STU-START-DATE
+            MOVE DINSTNUMI OF ACEDMAPI TO STU-INST-NUM
+            MOVE DSTATUSI OF ACEDMAPI TO STU-STATUS
+            MOVE DSTDATE2I  OF ACEDMAPI TO STU-PF-DATE
+            EXEC CICS REWRITE
+               FILE('STUFILE')
+               FROM(STUDENT-REC)
+               RESP(WS-RESP)
+            END-EXEC
+            MOVE 'RECORD MODIFIED' TO WS-MSG
+            PERFORM 1000-SEND-KEY-MAP.
+       4000-SEND-DET-MOD-MAP.
+            MOVE WS-STU-NUM-NUM TO WS-STU-NUM-CA
+            MOVE WS-FORMDATE      TO DDATEOO OF ACEDMAPO
+            MOVE WS-STU-NUM-NUM   TO DSTUNUMO OF ACEDMAPO
+            MOVE STU-NAME         TO DNAMEO OF ACEDMAPO
+            MOVE STU-ADDRESS      TO DADDRO OF ACEDMAPO
+            MOVE STU-START-DATE   TO DSDATEO OF ACEDMAPO
+            MOVE STU-INST-NUM     TO DINSTNUMO OF ACEDMAPO
+            MOVE STU-STATUS       TO DSTATUSO OF ACEDMAPO
+            MOVE STU-PF-DATE      TO DSTDATE2O OF ACEDMAPO
+            MOVE WS-MSG           TO DMSGO OF ACEDMAPO
+            EXEC CICS SEND
+               MAP('ACEDMAP')
+               MAPSET('ACEPMAP')
+               FROM(ACEDMAPO)
+               ERASE CURSOR
+            END-EXEC
+            MOVE SPACES TO WS-MSG
+            MOVE 'DMAP' TO WS-LAST-MAP.
+       5000-SEND-DET-ADD-MAP.
+            MOVE WS-FORMDATE   TO DDATEOO  OF ACEDMAPO
+            MOVE WS-STU-NUM-NUM TO DSTUNUMO OF ACEDMAPO
+            MOVE SPACES TO DNAMEO OF ACEDMAPO
+            MOVE SPACES TO DADDRO OF ACEDMAPO
+            MOVE SPACES TO DSDATEO OF ACEDMAPO
+            MOVE SPACES TO DINSTNUMO OF ACEDMAPO
+            MOVE SPACES TO DSTATUSO OF ACEDMAPO
+            MOVE SPACES TO DSTDATE2O OF ACEDMAPO
+            MOVE WS-MSG TO DMSGO OF ACEDMAPO
+            EXEC CICS SEND
+               MAP('ACEDMAP')
+               MAPSET('ACEPMAP')
+               FROM(ACEDMAPO)
+               ERASE CURSOR
+            END-EXEC
+            MOVE SPACES TO WS-MSG
+            MOVE 'DMAP' TO WS-LAST-MAP.
+       6000-VALIDATE-DET-MAP.
+            MOVE 'N' TO WS-ERROR-FLAG
+            IF DNAMEI OF ACEDMAPI = SPACES
+              MOVE 'NAME CANNOT BE BLANK' TO WS-MSG
+              MOVE 'Y' TO WS-ERROR-FLAG
+            END-IF
+            IF DADDRI OF ACEDMAPI = SPACES
+              MOVE 'ADDRESS CANNOT BE BLANK' TO WS-MSG
+              MOVE 'Y' TO WS-ERROR-FLAG
+            END-IF
+            IF DSDATEI OF ACEDMAPI = SPACES
+              MOVE 'START DATE CANNOT BE BLANK' TO WS-MSG
+              MOVE 'Y' TO WS-ERROR-FLAG
+            END-IF
+            IF DINSTNUMI OF ACEDMAPI = SPACES OR ZEROS
+              MOVE 'INSTRUCTOR NUMBER REQUIRED' TO WS-MSG
+              MOVE 'Y' TO WS-ERROR-FLAG
+            END-IF
+            IF DSTATUSI OF ACEDMAPI = SPACES
+              MOVE 'STATUS CANNOT BE BLANK' TO WS-MSG
+              MOVE 'Y' TO WS-ERROR-FLAG
+            END-IF
+            IF DSTDATE2I OF ACEDMAPI = SPACES
+              MOVE 'STATUS DATE CANNOT BE BLANK' TO WS-MSG
+              MOVE 'Y' TO WS-ERROR-FLAG
+            END-IF.
+       8000-NOTFND.
+            MOVE 'RECORD NOT FOUND' TO WS-MSG
+            PERFORM 1000-SEND-KEY-MAP.
+       9000-MAPFAIL.
+            PERFORM 1000-SEND-KEY-MAP.
+       9999-ERROR.
+              EXEC CICS ABEND ABCODE('ACEE') END-EXEC.
