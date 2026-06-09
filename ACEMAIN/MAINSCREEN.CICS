@@ -1,0 +1,50 @@
+ACEPMP   DFHMSD TYPE=&SYSPARM,                                         X00010000
+               LANG=COBOL,                                             X00020000
+               MODE=INOUT,                                             X00030000
+               TERM=3270-2,                                            X00040000
+               CTRL=FREEKB,                                            X00050000
+               STORAGE=AUTO,                                           X00060000
+               TIOAPFX=YES                                              00070000
+ACEMNMP  DFHMDI SIZE=(24,80),                                          X00080001
+               LINE=1,                                                 X00090000
+               COLUMN=1                                                 00100000
+         DFHMDF POS=(1,28),LENGTH=18,                                  X00110000
+               ATTRB=(ASKIP,BRT),                                      X00120000
+               INITIAL='ACE DRIVING SCHOOL'                             00130000
+         DFHMDF POS=(1,62),LENGTH=06,                                  X00140000
+               ATTRB=(ASKIP,NORM),                                     X00150000
+               INITIAL='DATE: '                                         00160000
+MDATE    DFHMDF POS=(2,68),LENGTH=10,                                  X00170001
+               ATTRB=(ASKIP,NORM)                                       00180000
+         DFHMDF POS=(3,30),LENGTH=09,                                  X00190000
+               ATTRB=(ASKIP,BRT),                                      X00200000
+               INITIAL='MAIN MENU'                                      00210000
+         DFHMDF POS=(4,01),LENGTH=79,                                  X00220000
+               ATTRB=(ASKIP,NORM),                                     X00230000
+               INITIAL='------------------------------------------------00240000
+               ---------------------------'                             00250000
+         DFHMDF POS=(7,25),LENGTH=35,                                  X00260000
+               ATTRB=(ASKIP,NORM),                                     X00270000
+               INITIAL='1.  STUDENT FILE MAINTENANCE'                   00280000
+         DFHMDF POS=(10,25),LENGTH=35,                                 X00290000
+               ATTRB=(ASKIP,NORM),                                     X00300000
+               INITIAL='2.  STUDENT INQUIRY'                            00310000
+         DFHMDF POS=(14,25),LENGTH=14,                                 X00320000
+               ATTRB=(ASKIP,NORM),                                     X00330000
+               INITIAL='ENTER OPTION: '                                 00340000
+MOPTION  DFHMDF POS=(14,40),LENGTH=01,                                 X00350000
+               ATTRB=(UNPROT,IC,NORM),                                 X00360000
+               INITIAL=' '                                              00370000
+         DFHMDF POS=(14,42),LENGTH=01,                                 X00380000
+               ATTRB=(ASKIP,NORM)                                       00390000
+         DFHMDF POS=(22,01),LENGTH=40,                                 X00400000
+               ATTRB=(ASKIP,NORM),                                     X00410000
+               INITIAL='ENTER: PROCESS          PF3: EXIT'              00420000
+         DFHMDF POS=(23,01),LENGTH=79,                                 X00430000
+               ATTRB=(ASKIP,NORM),                                     X00440000
+               INITIAL='------------------------------------------------00450000
+               ---------------------------'                             00460000
+MMSG     DFHMDF POS=(24,01),LENGTH=79,                                 X00470000
+               ATTRB=(ASKIP,BRT)                                        00480000
+         DFHMSD TYPE=FINAL                                              00490000
+         END                                                            00500000
