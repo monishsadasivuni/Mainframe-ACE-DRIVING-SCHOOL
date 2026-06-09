@@ -1,0 +1,84 @@
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. ACEMENU.
+       ENVIRONMENT DIVISION.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01  WS-OPTION           PIC X(01) VALUE SPACES.
+       01  WS-MSG              PIC X(79) VALUE SPACES.
+       01  WS-DATE.
+           05  WS-ABSTIME      PIC S9(15) COMP-3.
+           05  WS-FORMDATE     PIC X(10).
+            COPY ACEPMP.
+            COPY DFHAID.
+            COPY DFHBMSCA.
+       PROCEDURE DIVISION.
+       0000-MAIN.
+            EXEC CICS HANDLE CONDITION
+                MAPFAIL(9000-MAPFAIL)
+                ERROR  (9999-ERROR)
+            END-EXEC
+            EXEC CICS ASKTIME   ABSTIME(WS-ABSTIME)  END-EXEC
+            EXEC CICS FORMATTIME
+                ABSTIME(WS-ABSTIME)
+                MMDDYYYY(WS-FORMDATE)
+                DATESEP('/')
+            END-EXEC
+            IF EIBCALEN = 0
+                PERFORM 1000-SEND-MENU
+                EXEC CICS RETURN
+                    TRANSID(EIBTRNID)
+                    COMMAREA(WS-OPTION)
+                    LENGTH(1)
+                END-EXEC
+            END-IF
+            EXEC CICS RECEIVE
+                MAP('ACEMNMP')
+                MAPSET('ACEPMP')
+                INTO(ACEMNMPI)
+            END-EXEC
+            IF EIBAID = DFHPF3
+                EXEC CICS RETURN END-EXEC
+            END-IF
+            IF EIBAID NOT = DFHENTER
+                MOVE 'ONLY ENTER OR PF3 ARE VALID' TO WS-MSG
+                PERFORM 1000-SEND-MENU
+                EXEC CICS RETURN
+                    TRANSID(EIBTRNID)
+                    COMMAREA(WS-OPTION)
+                    LENGTH(1)
+                END-EXEC
+            END-IF
+            MOVE MOPTIONI OF ACEMNMPI TO WS-OPTION
+            EVALUATE WS-OPTION
+                WHEN '1'
+                    EXEC CICS XCTL PROGRAM('STFMNT') END-EXEC
+                WHEN '2'
+                    EXEC CICS XCTL PROGRAM('ACEPIQ')  END-EXEC
+                WHEN OTHER
+                    MOVE 'ENTER 1 OR 2 ONLY' TO WS-MSG
+                    PERFORM 1000-SEND-MENU
+            END-EVALUATE
+            EXEC CICS RETURN
+                TRANSID(EIBTRNID)
+                COMMAREA(WS-OPTION)
+                LENGTH(1)
+            END-EXEC.
+       1000-SEND-MENU.
+            MOVE WS-FORMDATE TO MDATEO
+            MOVE WS-MSG      TO MMSGO
+            EXEC CICS SEND
+                MAP('ACEMNMP')
+                MAPSET('ACEPMP')
+                FROM(ACEMNMPO)
+                ERASE CURSOR
+            END-EXEC
+            MOVE SPACES TO WS-MSG.
+       9000-MAPFAIL.
+            PERFORM 1000-SEND-MENU
+            EXEC CICS RETURN
+                TRANSID(EIBTRNID)
+                COMMAREA(WS-OPTION)
+                LENGTH(1)
+            END-EXEC.
+       9999-ERROR.
+            EXEC CICS ABEND ABCODE('MENE') END-EXEC.
