@@ -1,0 +1,272 @@
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. ACEPINQ.
+       ENVIRONMENT DIVISION.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01 WS-STUDENT-REC.
+          05 STUD-NUM        PIC X(05).
+          05 STUD-NAME       PIC X(20).
+          05 STUD-ADDRESS    PIC X(20).
+          05 STUD-START-DATE PIC X(10).
+          05 STUD-INST-NUM   PIC X(5).
+          05 STUD-STATUS     PIC X(1).
+          05 STUD-PF-DATE    PIC X(10).
+       01 WS-COMMAREA.
+          05 WS-LAST-MAP     PIC X(04) VALUE SPACES.
+          05 WS-STU-NUM-SAVE PIC X(05) VALUE SPACES.
+       01 WS-STU-NUM-BROWSE  PIC X(05) VALUE SPACES.
+       01 WS-FLAGS.
+          05 WS-RESP         PIC S9(08) COMP.
+       01 WS-MSG             PIC X(79) VALUE SPACES.
+       01 WS-DATE.
+          05 WS-ABSTIME      PIC S9(15) COMP-3.
+          05 WS-FORMDATE     PIC X(10).
+          COPY ACEPMAP.
+          COPY DFHAID.
+       LINKAGE SECTION.
+       01 DFHCOMMAREA        PIC X(09).
+       PROCEDURE DIVISION.
+       0000-MAIN.
+            EXEC CICS HANDLE CONDITION
+                MAPFAIL  (9000-MAPFAIL)
+                NOTFND   (9200-NOTFND)
+                ENDFILE  (8100-ENDFILE)
+                INVREQ   (9999-ERROR)
+                NOTOPEN  (9999-ERROR)
+                ERROR    (9999-ERROR)
+            END-EXEC
+            EXEC CICS ASKTIME ABSTIME(WS-ABSTIME) END-EXEC
+            EXEC CICS FORMATTIME
+                ABSTIME(WS-ABSTIME)
+                MMDDYYYY(WS-FORMDATE)
+                DATESEP('/')
+            END-EXEC
+            IF EIBCALEN = 0
+                MOVE 'KMAP' TO WS-LAST-MAP
+                MOVE SPACES TO WS-STU-NUM-SAVE
+                PERFORM 1000-SHOW-BLANK-MAP
+                EXEC CICS RETURN
+                    TRANSID('MM12')
+                    COMMAREA(WS-COMMAREA)
+                    LENGTH(9)
+                END-EXEC
+            END-IF
+            MOVE DFHCOMMAREA TO WS-COMMAREA
+            EVALUATE WS-LAST-MAP
+                WHEN 'KMAP'
+                    PERFORM 2000-PROCESS-KEY-MAP
+                WHEN 'DMAP'
+                    PERFORM 3000-PROCESS-DET-MAP
+                WHEN OTHER
+                    PERFORM 1000-SHOW-BLANK-MAP
+            END-EVALUATE
+            EXEC CICS RETURN
+                TRANSID('MM12')
+                COMMAREA(WS-COMMAREA)
+                LENGTH(9)
+            END-EXEC.
+       1000-SHOW-BLANK-MAP.
+            MOVE LOW-VALUES  TO ACEKMAPO
+            MOVE WS-FORMDATE TO KDATEOO OF ACEKMAPO
+            MOVE WS-MSG      TO KMSGO   OF ACEKMAPO
+            EXEC CICS SEND
+                MAP('ACEKMAP')
+                MAPSET('ACEPMAP')
+                FROM(ACEKMAPO)
+                ERASE
+            END-EXEC
+            MOVE SPACES TO WS-MSG
+            MOVE 'KMAP' TO WS-LAST-MAP.
+       2000-PROCESS-KEY-MAP.
+            EXEC CICS RECEIVE
+                MAP('ACEKMAP')
+                MAPSET('ACEPMAP')
+                INTO(ACEKMAPI)
+            END-EXEC
+            IF EIBAID = DFHPF3
+               EXEC CICS XCTL PROGRAM('ACEMENU') END-EXEC
+            END-IF
+            IF EIBAID = DFHPF4
+               PERFORM 4000-FIRST-RECORD
+               EXIT
+            END-IF
+            IF EIBAID = DFHPF5
+               PERFORM 5000-LAST-RECORD
+               EXIT
+            END-IF
+            IF EIBAID NOT = DFHENTER
+               MOVE 'ENTER/PF3/PF4/PF5 ONLY ON THIS SCREEN'
+                   TO WS-MSG
+               PERFORM 1000-SHOW-BLANK-MAP
+               EXIT
+            END-IF
+            IF KSTUNUMI OF ACEKMAPI = SPACES
+               MOVE 'STUDENT NUMBER CANNOT BE BLANK' TO WS-MSG
+               PERFORM 1000-SHOW-BLANK-MAP
+               EXIT
+            END-IF
+            MOVE KSTUNUMI OF ACEKMAPI TO WS-STU-NUM-SAVE
+            PERFORM 6000-DISPLAY-BY-KEY.
+       3000-PROCESS-DET-MAP.
+            IF EIBAID =  DFHENTER
+            EXEC CICS RECEIVE
+                MAP('ACEDMAP')
+                MAPSET('ACEPMAP')
+                INTO(ACEDMAPI)
+            END-EXEC
+            END-IF
+            IF EIBAID = DFHPF3
+               PERFORM 1000-SHOW-BLANK-MAP
+               EXIT
+            END-IF
+            EVALUATE TRUE
+               WHEN EIBAID = DFHPF4
+                   PERFORM 4000-FIRST-RECORD
+               WHEN EIBAID = DFHPF5
+                   PERFORM 5000-LAST-RECORD
+               WHEN EIBAID = DFHPF7
+                   PERFORM 7000-PREV-RECORD
+               WHEN EIBAID = DFHPF8
+                   PERFORM 8000-NEXT-RECORD
+               WHEN OTHER
+                   MOVE 'PF3/PF4/PF5/PF7/PF8 ONLY' TO WS-MSG
+                   PERFORM 9100-SHOW-REC-MAP
+            END-EVALUATE.
+       4000-FIRST-RECORD.
+            MOVE LOW-VALUES TO WS-STU-NUM-BROWSE
+            EXEC CICS STARTBR
+                FILE('STUFILE')
+                RIDFLD(WS-STU-NUM-BROWSE)
+            END-EXEC
+            EXEC CICS READNEXT
+               FILE('STUFILE')
+               INTO(WS-STUDENT-REC)
+               RIDFLD(WS-STU-NUM-BROWSE)
+               RESP(WS-RESP)
+            END-EXEC
+            EXEC CICS ENDBR FILE('STUFILE') END-EXEC
+            MOVE WS-STU-NUM-BROWSE TO WS-STU-NUM-SAVE
+            PERFORM 9100-SHOW-REC-MAP.
+       5000-LAST-RECORD.
+            MOVE HIGH-VALUES TO WS-STU-NUM-BROWSE
+            EXEC CICS STARTBR
+                FILE('STUFILE')
+                RIDFLD(WS-STU-NUM-BROWSE)
+                GTEQ
+            END-EXEC
+            EXEC CICS READPREV
+                FILE('STUFILE')
+                INTO(WS-STUDENT-REC)
+                RIDFLD(WS-STU-NUM-BROWSE)
+                RESP(WS-RESP)
+            END-EXEC
+            EXEC CICS ENDBR FILE('STUFILE') END-EXEC
+            MOVE WS-STU-NUM-BROWSE TO WS-STU-NUM-SAVE
+            PERFORM 9100-SHOW-REC-MAP.
+       6000-DISPLAY-BY-KEY.
+            EXEC CICS READ
+                FILE('STUFILE')
+                INTO(WS-STUDENT-REC)
+                RIDFLD(WS-STU-NUM-SAVE)
+                RESP(WS-RESP)
+            END-EXEC
+            IF WS-RESP = DFHRESP(NORMAL)
+                PERFORM 9100-SHOW-REC-MAP
+            ELSE
+                MOVE 'RECORD NOT FOUND' TO WS-MSG
+                PERFORM 1000-SHOW-BLANK-MAP
+            END-IF.
+       7000-PREV-RECORD.
+            MOVE WS-STU-NUM-SAVE TO WS-STU-NUM-BROWSE
+            EXEC CICS STARTBR
+                FILE('STUFILE')
+                RIDFLD(WS-STU-NUM-BROWSE)
+                GTEQ
+            END-EXEC
+            EXEC CICS READPREV
+                FILE('STUFILE')
+                INTO(WS-STUDENT-REC)
+                RIDFLD(WS-STU-NUM-BROWSE)
+                RESP(WS-RESP)
+            END-EXEC
+            IF WS-RESP = DFHRESP(NORMAL)
+                EXEC CICS READPREV
+                    FILE('STUFILE')
+                    INTO(WS-STUDENT-REC)
+                    RIDFLD(WS-STU-NUM-BROWSE)
+                    RESP(WS-RESP)
+                END-EXEC
+            END-IF
+            EXEC CICS ENDBR FILE('STUFILE') END-EXEC
+            IF WS-RESP = DFHRESP(NORMAL)
+                MOVE WS-STU-NUM-BROWSE TO WS-STU-NUM-SAVE
+                PERFORM 9100-SHOW-REC-MAP
+            ELSE
+                MOVE 'ALREADY AT FIRST RECORD' TO WS-MSG
+                PERFORM 9100-SHOW-REC-MAP
+            END-IF.
+       8000-NEXT-RECORD.
+            MOVE WS-STU-NUM-SAVE TO WS-STU-NUM-BROWSE
+            EXEC CICS STARTBR
+                FILE('STUFILE')
+                RIDFLD(WS-STU-NUM-BROWSE)
+                GTEQ
+            END-EXEC
+            EXEC CICS READNEXT
+                FILE('STUFILE')
+                INTO(WS-STUDENT-REC)
+                RIDFLD(WS-STU-NUM-BROWSE)
+                RESP(WS-RESP)
+            END-EXEC
+            IF WS-RESP = DFHRESP(NORMAL)
+                EXEC CICS READNEXT
+                    FILE('STUFILE')
+                    INTO(WS-STUDENT-REC)
+                    RIDFLD(WS-STU-NUM-BROWSE)
+                    RESP(WS-RESP)
+                END-EXEC
+            END-IF
+            EXEC CICS ENDBR FILE('STUFILE') END-EXEC
+            IF WS-RESP = DFHRESP(NORMAL)
+                MOVE WS-STU-NUM-BROWSE TO WS-STU-NUM-SAVE
+                PERFORM 9100-SHOW-REC-MAP
+            ELSE
+                MOVE 'ALREADY AT LAST RECORD' TO WS-MSG
+                PERFORM 9100-SHOW-REC-MAP
+            END-IF.
+       9100-SHOW-REC-MAP.
+            MOVE WS-FORMDATE     TO DDATEOO   OF ACEDMAPO
+            MOVE STUD-NUM        TO DSTUNUMO  OF ACEDMAPO
+            MOVE STUD-NAME       TO DNAMEO    OF ACEDMAPO
+            MOVE STUD-ADDRESS    TO DADDRO    OF ACEDMAPO
+            MOVE STUD-START-DATE TO DSDATEO   OF ACEDMAPO
+            MOVE STUD-INST-NUM   TO DINSTNUMO OF ACEDMAPO
+            MOVE STUD-STATUS     TO DSTATUSO  OF ACEDMAPO
+            MOVE STUD-PF-DATE    TO DSTDATE2O OF ACEDMAPO
+            MOVE WS-MSG          TO DMSGO     OF ACEDMAPO
+            EXEC CICS SEND
+                MAP('ACEDMAP')
+                MAPSET('ACEPMAP')
+                FROM(ACEDMAPO)
+                ERASE
+            END-EXEC
+            MOVE SPACES TO WS-MSG
+            MOVE 'DMAP' TO WS-LAST-MAP.
+       8100-ENDFILE.
+            MOVE 'END OF FILE REACHED' TO WS-MSG
+            PERFORM 9100-SHOW-REC-MAP.
+       9200-NOTFND.
+            MOVE 'RECORD NOT FOUND' TO WS-MSG
+            PERFORM 1000-SHOW-BLANK-MAP.
+       9000-MAPFAIL.
+            IF
+               EIBAID = DFHPF7 OR
+               EIBAID = DFHPF8 OR
+               EIBAID = DFHPF4 OR
+               EIBAID = DFHPF5
+               CONTINUE
+            ELSE
+               PERFORM 1000-SHOW-BLANK-MAP
+            END-IF.
+       9999-ERROR.
+            EXEC CICS ABEND ABCODE('INQE') END-EXEC.
